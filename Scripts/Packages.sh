@@ -62,7 +62,19 @@ UPDATE_PACKAGE "theme-fluent" "LazuliKao/luci-theme-fluent" "main"
 UPDATE_PACKAGE "substore" "XiaoHaiSly/OpenWrt-SubStore" "main"
 UPDATE_PACKAGE "miaomiaowu" "XiaoHaiSly/OpenWrt-MMW" "main"
 UPDATE_PACKAGE "docker" "lisaac/luci-lib-docker" "master"
-UPDATE_PACKAGE "dockerman" "lisaac/luci-app-dockerman" "master" "pkg"
+UPDATE_PACKAGE "dockerman" "lisaac/luci-app-dockerman" "master"
+# lisaac/luci-app-dockerman 仓库结构为 applications/luci-app-dockerman/，
+# 而仓库目录本身克隆下来也叫 luci-app-dockerman —— 与 UPDATE_PACKAGE 的
+# "pkg" 模式内部 cp 目标同名冲突（cp 会拷进同名目录里，再被 rm -rf 整体删掉），
+# 所以这里手动拍平：先挪到临时名，删除外层克隆目录，再改回正式包名。
+if [ -d "./luci-app-dockerman/applications/luci-app-dockerman" ]; then
+	mv -f ./luci-app-dockerman/applications/luci-app-dockerman ./.dockerman-flatten-tmp
+	rm -rf ./luci-app-dockerman
+	mv -f ./.dockerman-flatten-tmp ./luci-app-dockerman
+	echo "dockerman package has been flattened!"
+else
+	echo "dockerman flatten failed: applications/luci-app-dockerman not found in clone!"
+fi
 
 UPDATE_PACKAGE "momo" "nikkinikki-org/OpenWrt-momo" "main"
 UPDATE_PACKAGE "nikki" "nikkinikki-org/OpenWrt-nikki" "main"
