@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2026 VIKINGYFY
 
+# 提前 source Docker.sh：UPDATE_PACKAGE 的清理逻辑要用到其中的
+# DOCKER_STACK_PROTECTED_BASENAMES（保护 dockerd/docker 不被通配符误删），
+# 这个变量必须在下面第一次调用 UPDATE_PACKAGE 之前就绪。
+[ -f "$GITHUB_WORKSPACE/Scripts/Docker.sh" ] && source "$GITHUB_WORKSPACE/Scripts/Docker.sh"
+
 #安装和更新软件包
 UPDATE_PACKAGE() {
 	local PKG_NAME=$1
@@ -17,10 +22,11 @@ UPDATE_PACKAGE() {
 	for NAME in "${PKG_LIST[@]}"; do
 		# 查找匹配的目录
 		echo "Search directory: $NAME"
-		# 排除 dockerd/docker：目录名都含 "docker" 子串，会被 UPDATE_PACKAGE "docker" 的通配符误删，
-		# 但官方 dockerd 编译时会用 "../docker/Makefile" 做版本一致性校验（要求 PKG_VERSION 与 dockerd 一致），
-		# docker（CLI）缺失会导致 dockerd 直接编译失败，两者都不能删。
-		local FOUND_DIRS=$(find ../feeds/luci/ ../feeds/packages/ -maxdepth 3 -type d -iname "*$NAME*" 2>/dev/null | grep -vE '/(dockerd|docker)$')
+		# 保护名单来自 Scripts/Docker.sh 的 DOCKER_STACK_PROTECTED_BASENAMES
+		# （目前是 dockerd/docker，理由见该文件顶部注释）；如果 Docker.sh 还没被
+		# source 过（比如脚本执行顺序变了）就退回硬编码兜底，不让保护直接失效。
+		local PROTECT_REGEX="/($(echo "${DOCKER_STACK_PROTECTED_BASENAMES:-dockerd docker}" | tr ' ' '|'))\$"
+		local FOUND_DIRS=$(find ../feeds/luci/ ../feeds/packages/ -maxdepth 3 -type d -iname "*$NAME*" 2>/dev/null | grep -vE "$PROTECT_REGEX")
 
 		# 删除找到的目录
 		if [ -n "$FOUND_DIRS" ]; then
@@ -62,41 +68,9 @@ UPDATE_PACKAGE "theme-fluent" "LazuliKao/luci-theme-fluent" "main"
 # 自定义
 UPDATE_PACKAGE "substore" "XiaoHaiSly/OpenWrt-SubStore" "main"
 UPDATE_PACKAGE "miaomiaowu" "XiaoHaiSly/OpenWrt-MMW" "main"
-UPDATE_PACKAGE "docker" "lisaac/luci-lib-docker" "master"
-# lisaac/luci-lib-docker 仓库结构同样是嵌套的：collections/luci-lib-docker/，
-# 和 dockerman 一样的坑，一并拍平（先前只按"根目录有 Makefile"处理是错的）。
-if [ -d "./luci-lib-docker/collections/luci-lib-docker" ]; then
-	mv -f ./luci-lib-docker/collections/luci-lib-docker ./.docker-flatten-tmp
-	rm -rf ./luci-lib-docker
-	mv -f ./.docker-flatten-tmp ./luci-lib-docker
-	echo "docker(luci-lib-docker) package has been flattened!"
-else
-	echo "docker(luci-lib-docker) flatten failed: collections/luci-lib-docker not found in clone!"
-fi
-
-UPDATE_PACKAGE "dockerman" "lisaac/luci-app-dockerman" "master"
-# lisaac/luci-app-dockerman 仓库结构为 applications/luci-app-dockerman/，
-# 而仓库目录本身克隆下来也叫 luci-app-dockerman —— 与 UPDATE_PACKAGE 的
-# "pkg" 模式内部 cp 目标同名冲突（cp 会拷进同名目录里，再被 rm -rf 整体删掉），
-# 所以这里手动拍平：先挪到临时名，删除外层克隆目录，再改回正式包名。
-if [ -d "./luci-app-dockerman/applications/luci-app-dockerman" ]; then
-	mv -f ./luci-app-dockerman/applications/luci-app-dockerman ./.dockerman-flatten-tmp
-	rm -rf ./luci-app-dockerman
-	mv -f ./.dockerman-flatten-tmp ./luci-app-dockerman
-	echo "dockerman package has been flattened!"
-else
-	echo "dockerman flatten failed: applications/luci-app-dockerman not found in clone!"
-fi
-
-# lisaac 的 luci-lib-docker / luci-app-dockerman 两个 Makefile 里 PKG_VERSION 都带 "v" 前缀
-# （例如 v0.3.4、v0.5.26），opkg 不检查这个格式，但 apk mkpkg 要求版本号必须以数字开头，
-# 否则报 "package version is invalid" 直接编译失败，这里去掉 v 前缀。
-for DOCKER_MK in "./luci-lib-docker/Makefile" "./luci-app-dockerman/Makefile"; do
-	if [ -f "$DOCKER_MK" ] && grep -q '^PKG_VERSION:=v' "$DOCKER_MK"; then
-		sed -i -E 's/^PKG_VERSION:=v/PKG_VERSION:=/' "$DOCKER_MK"
-		echo "$DOCKER_MK PKG_VERSION v-prefix stripped for apk compat!"
-	fi
-done
+# docker/dockerman 不再直接从 lisaac 上游拉取，改成从整理好的合并仓库安装，
+# 具体仓库地址在 Scripts/Docker.sh 顶部的 DOCKER_STACK_REPO 变量里改。
+type docker_stack_install_from_mirror >/dev/null 2>&1 && docker_stack_install_from_mirror
 
 UPDATE_PACKAGE "momo" "nikkinikki-org/OpenWrt-momo" "main"
 UPDATE_PACKAGE "nikki" "nikkinikki-org/OpenWrt-nikki" "main"

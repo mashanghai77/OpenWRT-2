@@ -1,5 +1,48 @@
 #!/usr/bin/env bash
 
+# ============================================================
+# Packages.sh 集成点
+# docker/dockerman 改成从用户自己整理好的合并仓库拉取（不再直接依赖
+# lisaac 上游仓库的分支名/目录结构/版本号写法），这里只保留：
+#   1. 克隆合并仓库并铺到 package/ 下
+#   2. 清理阶段保护官方 dockerd/docker 不被误删（dockerd 编译时会拿
+#      "../docker/Makefile" 做版本一致性校验，两者都不能删）
+# ============================================================
+
+# TODO：换成你自己整理好的合并仓库，形如 "your-github-name/openwrt-docker-stack"
+DOCKER_STACK_REPO="YOUR_GITHUB_USERNAME/openwrt-docker-stack"
+DOCKER_STACK_BRANCH="main"
+
+# UPDATE_PACKAGE 通配符清理阶段（按 *docker* 匹配删除旧目录）不应该删除的
+# 官方包目录基名，Packages.sh 的清理循环会读这个变量。
+DOCKER_STACK_PROTECTED_BASENAMES="dockerd docker"
+
+# 克隆合并仓库，把 luci-lib-docker / luci-app-dockerman 铺到当前目录（package/）下。
+# 合并仓库里这两个包已经是拍平过、PKG_VERSION 去掉 v 前缀、dockerman 的
+# nftables 兼容补丁也已经永久打好的状态，这里不需要再做任何后处理。
+docker_stack_install_from_mirror() {
+    local tmp_dir="./.openwrt-docker-stack-tmp"
+
+    rm -rf "$tmp_dir" ./luci-lib-docker ./luci-app-dockerman
+
+    if ! git clone --depth=1 --single-branch --branch "$DOCKER_STACK_BRANCH" \
+        "https://github.com/$DOCKER_STACK_REPO.git" "$tmp_dir"; then
+        echo "错误：克隆合并仓库 $DOCKER_STACK_REPO 失败" >&2
+        return 1
+    fi
+
+    if [ ! -d "$tmp_dir/luci-lib-docker" ] || [ ! -d "$tmp_dir/luci-app-dockerman" ]; then
+        echo "错误：合并仓库里没有找到 luci-lib-docker 或 luci-app-dockerman 目录" >&2
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    mv -f "$tmp_dir/luci-lib-docker" ./luci-lib-docker
+    mv -f "$tmp_dir/luci-app-dockerman" ./luci-app-dockerman
+    rm -rf "$tmp_dir"
+    echo "docker/dockerman 已从合并仓库 $DOCKER_STACK_REPO 安装完成！"
+}
+
 _docker_stack_resolve_component_makefile() {
     local build_dir="$1"
     local component="$2"
