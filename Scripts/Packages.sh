@@ -17,9 +17,10 @@ UPDATE_PACKAGE() {
 	for NAME in "${PKG_LIST[@]}"; do
 		# 查找匹配的目录
 		echo "Search directory: $NAME"
-		# 排除 dockerd：其目录名包含 "docker" 子串，会被 UPDATE_PACKAGE "docker" 的通配符误删，
-		# 但 dockerd 是 containerd/runc/tini 等官方包的编译依赖，绝不能删。
-		local FOUND_DIRS=$(find ../feeds/luci/ ../feeds/packages/ -maxdepth 3 -type d -iname "*$NAME*" 2>/dev/null | grep -vE '/dockerd$')
+		# 排除 dockerd/docker：目录名都含 "docker" 子串，会被 UPDATE_PACKAGE "docker" 的通配符误删，
+		# 但官方 dockerd 编译时会用 "../docker/Makefile" 做版本一致性校验（要求 PKG_VERSION 与 dockerd 一致），
+		# docker（CLI）缺失会导致 dockerd 直接编译失败，两者都不能删。
+		local FOUND_DIRS=$(find ../feeds/luci/ ../feeds/packages/ -maxdepth 3 -type d -iname "*$NAME*" 2>/dev/null | grep -vE '/(dockerd|docker)$')
 
 		# 删除找到的目录
 		if [ -n "$FOUND_DIRS" ]; then
@@ -61,7 +62,7 @@ UPDATE_PACKAGE "theme-fluent" "LazuliKao/luci-theme-fluent" "main"
 # 自定义
 UPDATE_PACKAGE "substore" "XiaoHaiSly/OpenWrt-SubStore" "main"
 UPDATE_PACKAGE "miaomiaowu" "XiaoHaiSly/OpenWrt-MMW" "main"
-UPDATE_PACKAGE "luci-lib-docker" "lisaac/luci-lib-docker" "master"
+UPDATE_PACKAGE "docker" "lisaac/luci-lib-docker" "master"
 UPDATE_PACKAGE "dockerman" "lisaac/luci-app-dockerman" "master"
 # lisaac/luci-app-dockerman 仓库结构为 applications/luci-app-dockerman/，
 # 而仓库目录本身克隆下来也叫 luci-app-dockerman —— 与 UPDATE_PACKAGE 的
